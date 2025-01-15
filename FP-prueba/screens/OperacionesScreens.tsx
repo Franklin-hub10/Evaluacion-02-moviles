@@ -1,6 +1,6 @@
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View, } from 'react-native';
-import React, { useState } from 'react';
-import { ref, push } from 'firebase/database';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { ref, push, set, onValue } from 'firebase/database';
 import { db, auth } from '../config/Config';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Picker } from '@react-native-picker/picker';
@@ -12,9 +12,8 @@ const OperacionesScreens = () => {
   const [saldo, setsaldo] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
 
-
   // Obtener el usuario logueado
-  React.useEffect(() => {
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserId(user.uid);
@@ -25,12 +24,21 @@ const OperacionesScreens = () => {
     return unsubscribe;
   }, []);
 
+  // Cargar el saldo inicial desde Firebase
+  useEffect(() => {
+    if (userId) {
+      const saldoRef = ref(db, `usuariosBanco/${userId}/saldo`);
+      const unsubscribe = onValue(saldoRef, (snapshot) => {
+        const data = snapshot.val();
+        setsaldo(data || 0);
+      });
+      return () => unsubscribe();
+    }
+  }, [userId]);
+
   function transaccion() {
     if (Monto <= 0) {
-      Alert.alert(
-        'Error',
-        'El monto no puede ser negativo o igual a cero. Por favor, ingresa un valor válido.'
-      );
+      Alert.alert('Error', 'El monto no puede ser negativo o igual a cero. Por favor, ingresa un valor válido.');
       return;
     }
 
@@ -69,19 +77,24 @@ const OperacionesScreens = () => {
 
     // Validar que la operación no deje un saldo negativo
     if (registro.saldoNuevo < 0) {
-      Alert.alert(
-        'Error',
-        'La operación no se puede completar porque deja un saldo negativo.'
-      );
+      Alert.alert('Error', 'La operación no se puede completar porque deja un saldo negativo.');
       return;
     }
 
     // Guardar en Firebase bajo el usuario logueado
-    const operacionesRef = ref(db, `usuariosBanco/${userId}`);
+    const operacionesRef = ref(db, `usuariosBanco/${userId}/operaciones`);
     push(operacionesRef, registro)
       .then(() => {
-        setsaldo(registro.saldoNuevo); // Actualiza el saldo
-        Alert.alert('Éxito', 'La operación se realizó con éxito.');
+        // Actualiza el saldo en Firebase
+        const saldoRef = ref(db, `usuariosBanco/${userId}/saldo`);
+        set(saldoRef, registro.saldoNuevo)
+          .then(() => {
+            setsaldo(registro.saldoNuevo); // Actualiza el saldo localmente
+            Alert.alert('Éxito', 'La operación se realizó con éxito.');
+          })
+          .catch((error) => {
+            Alert.alert('Error', 'No se pudo actualizar el saldo: ' + error.message);
+          });
       })
       .catch((error) => {
         Alert.alert('Error', 'No se pudo guardar la operación: ' + error.message);
@@ -96,7 +109,10 @@ const OperacionesScreens = () => {
         placeholder="Monto"
         placeholderTextColor="#aaa"
         keyboardType="numeric"
-        onChangeText={(texto) => setMonto(parseFloat(texto))}
+        onChangeText={(texto) => {
+          const valor = parseFloat(texto);
+          setMonto(isNaN(valor) ? 0 : valor);
+        }}
       />
       <Picker
         selectedValue={tipoOperacion}
@@ -122,6 +138,8 @@ const OperacionesScreens = () => {
 };
 
 export default OperacionesScreens;
+
+
 
 const styles = StyleSheet.create({
   container: {

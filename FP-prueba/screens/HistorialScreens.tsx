@@ -1,9 +1,10 @@
-import { StyleSheet, Text, View, FlatList, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, FlatList, Alert } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../config/Config';
 import { ref, onValue } from 'firebase/database';
+import TarjetaHistorial from '../components/TarjetaHistorial';
 
-// Definir el tipo para las operaciones
+// Tipo para las operaciones
 type Operacion = {
   operacionId: string;
   monto: number;
@@ -30,39 +31,32 @@ export default function HistorialScreens() {
     return unsubscribe;
   }, []);
 
-  // Cargar las operaciones desde Firebase
+  // Escuchar cambios en las operaciones en Firebase
   useEffect(() => {
     if (userId) {
-      const operacionesRef = ref(db, `usuariosBanco/${userId}`);
-      onValue(operacionesRef, (snapshot) => {
+      const operacionesRef = ref(db, `usuariosBanco/${userId}/operaciones`);
+      const unsubscribe = onValue(operacionesRef, (snapshot) => {
         const data = snapshot.val();
+        console.log('Datos actualizados en Firebase:', data); // Verifica si llegan los datos nuevos
         const operacionesList = data ? (Object.values(data) as Operacion[]) : [];
         setOperaciones(operacionesList);
       });
+
+      return () => unsubscribe(); // Limpia la suscripción
     }
   }, [userId]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Historial de Operaciones</Text>
-      {operaciones.length > 0 ? (
-        <FlatList
-          data={operaciones}
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={({ item }: { item: Operacion }) => (
-            <TouchableOpacity
-              style={styles.itemContainer}
-              onPress={() => Alert.alert('Comentario', item.comentario || 'Sin comentario')}
-            >
-              <Text style={styles.itemText}>Tipo: {item.tipo}</Text>
-              <Text style={styles.itemText}>Monto: ${item.monto}</Text>
-              <Text style={styles.itemText}>Fecha: {item.fecha}</Text>
-            </TouchableOpacity>
-          )}
-        />
-      ) : (
-        <Text style={styles.emptyText}>No hay operaciones registradas.</Text>
-      )}
+      <FlatList
+        data={operaciones}
+        keyExtractor={(item) => item.operacionId}
+        renderItem={({ item }) => <TarjetaHistorial datos={item} />}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>No hay operaciones registradas.</Text>
+        }
+      />
     </View>
   );
 }
@@ -79,18 +73,6 @@ const styles = StyleSheet.create({
     color: '#FF6600',
     marginBottom: 20,
     textAlign: 'center',
-  },
-  itemContainer: {
-    backgroundColor: '#FFFFFF',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#FF6600',
-  },
-  itemText: {
-    fontSize: 16,
-    color: '#333',
   },
   emptyText: {
     fontSize: 16,
